@@ -1,0 +1,88 @@
+#!/bin/env python3.7
+
+import sys
+import subprocess
+import getopt
+import os.path
+
+
+
+# Just input parsing
+
+try:
+    opts, args = getopt.getopt(sys.argv[1:], "gs")
+except getopt.GetoptError:
+    print("poke_trace [-g | -s] file_path")
+    sys.exit(2)
+
+if ('-g', '') in opts:
+    gradual = True
+else:
+    gradual = False
+
+if ('-s', '') in opts:
+    silent = True
+else:
+    silent = False
+
+if silent and gradual:
+    print("Can't have both!")
+    sys.exit(2)
+
+if len(args) != 1:
+    print("poke_trace [-i | -s] file_path")
+    sys.exit(2)
+
+file_path = args[0]
+
+if not os.path.isfile(file_path):
+    print("File not found!")
+    sys.exit(2)
+
+
+# Start of the program itself
+
+f = open(file_path, "r")
+
+for line in f:
+    tlist = line.split()
+
+    tlist_length = len(tlist)
+
+    if tlist_length == 3:
+        if tlist[0] == "MARK":
+            print("MARK", tlist[2])
+        else:
+            continue
+    if tlist_length > 6:
+        if tlist[2] == ":=":
+            print("blabla")
+            dest = tlist[1][2:-1]
+            value = tlist[3]
+            if tlist_length == 6:
+                name = tlist[5]
+            else:
+                name = "unknown"
+        elif tlist[2] == "MMIO32" and tlist[3] == "W":
+            dest = tlist[4]
+            value = tlist[5]
+            name = tlist[6]
+        else:
+            continue
+    else:
+        continue
+
+    if not silent:
+        print("{:<30s} {:<10s} {:<10s}" .format(name, dest, value))
+    proc = subprocess.Popen(["sudo", "/home/mmenzyns/.local/bin/nvapoke", dest, value])
+    proc.wait()
+    if gradual:
+        try:
+            sys.stdout.write("Press Enter to continue...")
+            input()
+            sys.stdout.write("\x1b[1A\x1b[2K") #VT100 cursor up and erase line
+        except KeyboardInterrupt:
+            print("\nKeyboardInterrupt")
+            f.close()
+            sys.exit(0)
+f.close()
