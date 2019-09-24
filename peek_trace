@@ -1,0 +1,55 @@
+#!/bin/env python3.7
+
+import sys
+import subprocess 
+import getopt
+import os.path
+
+
+# Just input parsing
+
+try:
+    opts, args = getopt.getopt(sys.argv[1:], "")
+except getopt.GetoptError:
+    print("peek_trace file_path")
+    sys.exit(2)
+
+if len(args) != 1:
+    print("peek_trace file_path")
+    sys.exit(2)
+
+file_path = args[0]
+
+if not os.path.isfile(file_path):
+    print("File not found!")
+    sys.exit(2)
+
+
+# Start of the program itself
+
+f = open(file_path, "r")
+
+for line in f:
+    tlist = line.split()
+
+    tlist_length = len(tlist)
+    if tlist_length == 0:
+        continue
+    
+
+    if tlist_length >= 3:
+        dest = tlist[0]
+
+
+    proc = subprocess.run(["sudo", "/home/mmenzyns/.local/bin/nvapeek", dest], text=True, capture_output=True)
+    out_list = proc.stdout.split()
+    if len(out_list) < 2:
+        if out_list[0] == "...":
+            proc = subprocess.run(["sudo", "/home/mmenzyns/.local/bin/lookup", "-c", "-ae6", dest, "0x0"], text=True, capture_output=True)
+            print(dest, "0x00000000", proc.stdout, end="")       
+            continue
+    value = out_list[1]
+    proc = subprocess.run(["sudo", "/home/mmenzyns/.local/bin/lookup", "-c", "-ae6", dest, value], text=True, capture_output=True)
+    print(dest, "0x"+value, proc.stdout, end="")
+
+f.close()
