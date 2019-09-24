@@ -1,0 +1,114 @@
+#!/bin/env python3.7
+
+import sys
+import subprocess
+import argparse 
+import os.path
+
+class Register:
+    def __init__(self, address, value):
+        self.address = address
+        self.value = value
+
+    
+parser = argparse.ArgumentParser()
+parser.add_argument("file_path", help="file to be parsed")
+parser.add_argument("-c", action="store_true",  help="do not print with ANSI colors")
+parser.add_argument("-u", action="store_true", help="do not print only unique adresses, but parse each line")
+parser.add_argument("-a", nargs="?", default="e6", help="chipset name")
+parser.add_argument("-s", action="store_true", help="do not sort")
+
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument("-nou", action="store_true", help="parse nouveau pmu trace from log")
+group.add_argument("-nv", action="store_true", help="parse nvidia mmio trace")
+args = parser.parse_args()
+
+if not os.path.isfile(args.file_path):
+    print("File not found!")
+    sys.exit(2)
+
+
+f = open(args.file_path, "r")
+registers = []
+
+for line in f:
+    token_list = line.split()
+    
+    if token_list[1] == "EXIT":
+        reg = Register("EXIT", "")
+        registers.append(reg)
+        continue
+    if len(token_list) < 3:
+        continue
+    if token_list[0] == "MARK":
+        continue
+
+    if args.nou:
+        try:
+            base = token_list.index("pmu:")
+        except ValueError:
+            base = -1
+            if token_list[0][0:2] != "R[":
+                continue
+    
+        if len(token_list) < base + 3:
+            continue
+        if token_list[base + 1][0:2] != "R[" or token_list[base + 2] != "=":
+            continue
+        
+        reg = Register(token_list[base + 1][2:-1], token_list[base + 3])
+
+    elif args.nv:
+        if "MMIO32" in token_list:
+            base = token_list.index("MMIO32")
+
+            # skip if the line is not write
+            if token_list[base+1] != "W":
+                continue
+
+            reg = Register(token_list[base+2], token_list[base+3])
+        else:
+            # skip if its not even script
+            if token_list[1][0:2] != "R[" or token_list[2] != ":=":
+                continue
+            reg = Register(token_list[1][2:-1], token_list[3])
+                    
+
+
+    if not args.u:
+        found = False
+        # If the register is already in the list, rewrite the value to have most recent value
+        for x in registers:
+            if x.address == reg.address:
+                found = True
+                x.value = reg.value
+        # Add to the list if its not already there
+        if not found:
+            registers.append(reg)
+    else:
+        registers.append(reg)
+
+if not args.s:
+    registers.sort(key=lambda x: x.address)
+
+
+for x in registers:
+    if x.address == "EXIT":
+        sys.stdout.write("\n")
+        continue
+    if x.address[0:2] != "0x":
+        x.address = "0x" + x.address
+    if x.value[0:2] != "0x":
+        x.value = "0x" + x.value
+
+    # Disable colors
+    if args.c:
+        proc = subprocess.run(["/home/mmenzyns/.local/bin/lookup", "-c", "-a", args.a, x.address, x.value], 
+                              text=True, capture_output=True)
+    else:
+        proc = subprocess.run(["/home/mmenzyns/.local/bin/lookup", "-a", args.a, x.address, x.value],
+                              text=True, capture_output=True)
+    print("{:<12s} {:<14s}" .format(x.address, x.value), proc.stdout, end="") 
+
+
+
